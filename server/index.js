@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import secret from '../secret';
 import User from '../models/user';
+import Solution from '../models/solution';
 import authProtector from '../middlewares/auth';
 
 let app = express();
@@ -55,6 +56,19 @@ app.post("/api/v1/login",(req,res) => {
             res.status(401).json({errors: {msg: "Invalid Username/Password"}})
         }
     })
+});
+
+app.post("/api/v1/new_solution", authProtector, (req, res) => {
+    const newSolution = req.body;
+    newSolution.user_id = req.currUser.id;
+
+    //quick fix of timestamp issue. need refactoring
+    newSolution.created_at = new Date();
+    newSolution.updated_at = new Date();
+
+    new Solution(newSolution).save().then(model => {
+        res.status(201).json({success: "Created successfully"});
+    });
 });
 
 app.get("/api/v1/profile/:user", authProtector, (req, res) => {
