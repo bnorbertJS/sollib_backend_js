@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import secret from '../secret';
 import User from '../models/user';
+import authProtector from '../middlewares/auth';
 
 let app = express();
 
@@ -56,7 +57,7 @@ app.post("/api/v1/login",(req,res) => {
     })
 });
 
-app.get("/api/v1/profile/:user",(req, res) => {
+app.get("/api/v1/profile/:user", authProtector, (req, res) => {
     User.query({
         where: {username: req.params.user}
     }).fetch({withRelated: ["solutions"]}).then(user => {
@@ -77,6 +78,5 @@ app.get("/api/v1/profile/:user",(req, res) => {
         }
     })
 });
-
 
 app.listen(8000, () => console.log("Running on 8000"));
