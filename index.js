@@ -1,15 +1,47 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
 import bodyParser from 'body-parser';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import secret from '../secret';
-import User from '../models/user';
-import Solution from '../models/solution';
-import authProtector from '../middlewares/auth';
+import secret from './secret';
+import User from './models/user';
+import Solution from './models/solution';
+import authProtector from './middlewares/auth';
 
 let app = express();
 
 app.use(bodyParser.json());
+app.use(express.static('./public/uploads/images'));
+
+const uploadImgStorage = multer.diskStorage({
+    destination: "./public/uploads/images",
+    filename: (req, file, cb) => {
+        cb(null, file.fieldname + "-" + Date.now() + path.extname(file.originalname))
+    }
+});
+
+const upload = multer({
+    storage: uploadImgStorage,
+    fileFilter: (req, file, cb) => {
+        checkUploadFileType(file, cb);
+    }
+}).single("profileImg");
+
+function checkUploadFileType(file, cb){
+    //only jpeg jpg png allowed
+    const filetypes = /jpeg|jpg|png/;
+
+    const ext = filetypes.test(path.extname(file.originalname).toLowerCase())
+
+    const mimetype = filetypes.test(file.mimetype);
+
+    if(mimetype && ext){
+        return cb(null, true);
+    }else{
+        cb("Only images please!");
+    }
+}
 
 app.get("/",(req, res) => {
     res.send("Init")
@@ -83,6 +115,10 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
                     lastname: user.get("lastname"),
                     firstname: user.get("firstname"),
                     email: user.get("email"),
+                    profile_pic: user.get("profile_pic"),
+                    github: user.get("github_url"),
+                    linkedin: user.get("linkedin_url"),
+                    webpage: user.get("homepage_url"),
                     created_at: user.get("created_at"),
                     solutions: user.toJSON().solutions
                 }
@@ -91,6 +127,22 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
             res.status(401).json({errors: {msg: "Cannot find username"}})
         }
     })
+});
+
+app.post("/api/v1/profile_upload" ,(req, res) => {
+    upload(req, res, (err) => {
+        if(err){
+            res.status(400).json({error: err});
+        }else{
+            console.log(req);
+            new User({id: 1})
+            .save({profile_pic: req.file.filename}, {patch: true})
+            .then(function(model) {
+                console.log(model);
+            });
+            res.json({success: true, msg: "Successfully changed profile picture"});
+        }
+    });
 });
 
 app.listen(8000, () => console.log("Running on 8000"));

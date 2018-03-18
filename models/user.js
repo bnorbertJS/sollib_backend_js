@@ -1,4 +1,4 @@
-import bookshelf from '../server/bookshelf';
+import bookshelf from '../bookshelf';
 import Solution from './solution';
 
 export default bookshelf.Model.extend({
