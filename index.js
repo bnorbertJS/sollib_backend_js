@@ -108,7 +108,6 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
         where: {username: req.params.user}
     }).fetch({withRelated: ["solutions"]}).then(user => {
         if (user){
-            console.log(user.toJSON())
             res.json({
                 user: {
                     username: user.get("username"),
@@ -119,6 +118,9 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
                     github: user.get("github_url"),
                     linkedin: user.get("linkedin_url"),
                     webpage: user.get("homepage_url"),
+                    self_intro: user.get("self_intro"),
+                    level: user.get("level"),
+                    experience: user.get("experience"),
                     created_at: user.get("created_at"),
                     solutions: user.toJSON().solutions
                 }
@@ -128,21 +130,27 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
         }
     })
 });
-
+// ATTENTION: MUST BE REFACTORED, THIS ROUTE MUST BE PROTECTED AND THE ID IS HARDCODED
 app.post("/api/v1/profile_upload" ,(req, res) => {
     upload(req, res, (err) => {
         if(err){
             res.status(400).json({error: err});
         }else{
-            console.log(req);
             new User({id: 1})
             .save({profile_pic: req.file.filename}, {patch: true})
             .then(function(model) {
-                console.log(model);
+                res.writeHead(301, {
+                    Location: "http" + (req.socket.encrypted ? "s" : "") + "://" + 
+                      req.headers.host + "/#/edit_profile"
+                  });
+                res.end();
             });
-            res.json({success: true, msg: "Successfully changed profile picture"});
         }
     });
+});
+
+app.post("/api/v1/profile_update",(req, res) => {
+
 });
 
 app.listen(8000, () => console.log("Running on 8000"));
