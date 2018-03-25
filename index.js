@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import secret from './secret';
 import User from './models/user';
 import Solution from './models/solution';
+import SolutionImage from './models/solution_imgs';
 import authProtector from './middlewares/auth';
 
 let app = express();
@@ -28,15 +29,22 @@ const upload = multer({
     }
 }).single("profileImg");
 
+const uploadSolutionImages = multer({
+    storage: uploadImgStorage,
+    fileFilter: (req, file, cb) => {
+        checkUploadFileType(file, cb);
+    }
+}).array("solutionImg", 10);
+
 function checkUploadFileType(file, cb){
     //only jpeg jpg png allowed
     const filetypes = /jpeg|jpg|png/;
 
     const ext = filetypes.test(path.extname(file.originalname).toLowerCase())
 
-    const mimetype = filetypes.test(file.mimetype);
+    //const mimetype = filetypes.test(file.mimetype);
 
-    if(mimetype && ext){
+    if(ext){
         return cb(null, true);
     }else{
         cb("Only images please!");
@@ -99,9 +107,53 @@ app.post("/api/v1/new_solution", authProtector, (req, res) => {
     newSolution.updated_at = new Date();
 
     new Solution(newSolution).save().then(model => {
-        res.status(201).json({success: "Created successfully"});
+        res.status(201).json({success: model});
     });
 });
+
+app.post("/api/v1/solution_upload/:solution", authProtector, (req, res) => {
+    //put solution image in the solution_imgs table with id of current solution
+    uploadSolutionImages(req, res, (err) => {
+        console.log(req.files)
+        if(err){
+            res.status(400).json({error: err});
+        }else{
+            new Solution({id: req.params.solution})
+            .save({pic_url: req.files[0].filename}, {patch: true})
+            .then(function(model) {
+               
+            });
+
+            Promise.all(
+                req.files.map(img => {
+                    return new SolutionImage({url: img.filename, solution_id: req.params.solution})
+                        .save()
+                        .then(function(model) {
+                            return model
+                    });
+                })
+            )
+            .then(data => res.status(200).json({success: data}));
+
+        }
+    })
+});
+
+app.get("/api/v1/solution_by_id/:solution", (req, res) => {
+    Solution.query({
+        where: {id: req.params.solution}
+    }).fetch({withRelated: ["solution_imgs"]}).then(sol => {
+        if(sol){
+            res.json({solution: sol});
+        }else{
+            res.status(401).json({errors: {msg: "Cannot find solution"}})
+        }
+    })
+});
+
+app.post("/api/v1/delete_solution/:solution", authProtector, (req, res) => {
+   // new Solution({id: req.params.solution}).destroy().then(model => { res.status(200).json({deleted: model})})
+})
 
 app.get("/api/v1/profile/:user", authProtector, (req, res) => {
     User.query({
@@ -130,27 +182,41 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
         }
     })
 });
-// ATTENTION: MUST BE REFACTORED, THIS ROUTE MUST BE PROTECTED AND THE ID IS HARDCODED
-app.post("/api/v1/profile_upload" ,(req, res) => {
+
+app.post("/api/v1/profile_upload", authProtector, (req, res) => {
     upload(req, res, (err) => {
         if(err){
             res.status(400).json({error: err});
         }else{
-            new User({id: 1})
+            new User({id: req.currUser.id})
             .save({profile_pic: req.file.filename}, {patch: true})
             .then(function(model) {
-                res.writeHead(301, {
-                    Location: "http" + (req.socket.encrypted ? "s" : "") + "://" + 
-                      req.headers.host + "/#/edit_profile"
-                  });
-                res.end();
+               res.status(200).json({success: req.file.filename});
             });
         }
     });
 });
 
-app.post("/api/v1/profile_update",(req, res) => {
-
+app.post("/api/v1/profile_update", authProtector, (req, res) => {
+    const { lastname, firstname, github, linkedin, webpage,
+        self_intro, level, experience, skills } = req.body;
+    
+    new User({id: req.currUser.id})
+    .save({
+        //user data
+        lastname,
+        firstname,
+        github_url: github,
+        linkedin_url: linkedin,
+        homepage_url: webpage,
+        self_intro,
+        level,
+        experience
+    }, {patch: true})
+    .then(function(model) {
+        console.log(model);
+       res.status(200).json({user: model});
+    });
 });
 
 app.listen(8000, () => console.log("Running on 8000"));
