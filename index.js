@@ -152,7 +152,17 @@ app.get("/api/v1/solution_by_id/:solution", (req, res) => {
 });
 
 app.post("/api/v1/delete_solution/:solution", authProtector, (req, res) => {
-   // new Solution({id: req.params.solution}).destroy().then(model => { res.status(200).json({deleted: model})})
+        SolutionImage.query({
+            where: {solution_id: req.params.solution}
+        }).destroy().then(model => {
+            if(model){
+                return Solution.query({where: {id: req.params.solution}}).destroy()
+            }
+        })
+        .then(resp => {
+            res.status(200).json({success: "Solution Deleted"})
+        })
+    
 })
 
 app.get("/api/v1/profile/:user", authProtector, (req, res) => {
