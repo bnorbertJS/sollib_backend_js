@@ -59,13 +59,14 @@ app.post("/api/v1/register",(req,res) => {
     
     const { username, email, lastname, firstname, pass } = req.body;
     const pass_crypt = bcrypt.hashSync(pass, 10);
-    console.log(req.body)
+    console.log(req.body);
 
     User.forge({
         username,
         email,
         lastname,
         firstname,
+        role: "user",
         pass: pass_crypt
     }, { hasTimestamps: true }).save()
         .then(user => res.status(201).json({success: true}))
@@ -73,7 +74,27 @@ app.post("/api/v1/register",(req,res) => {
 
 });
 
-app.post("/api/v1/login",(req,res) => {
+app.post("/api/v1/register_recruiter",(req, res) => {
+    
+    const { username, email, lastname, firstname, pass, wat, company } = req.body;
+    const pass_crypt = bcrypt.hashSync(pass, 10);
+    console.log(req.body);
+
+    User.forge({
+        username,
+        email,
+        lastname,
+        firstname,
+        wat,
+        company,
+        role: "recruiter",
+        pass: pass_crypt
+    }, { hasTimestamps: true }).save()
+        .then(user => res.status(201).json({success: true}))
+        .catch(err => res.status(500).json({err: err}));
+});
+
+app.post("/api/v1/login",(req, res) => {
     const {authCred, pass} = req.body;
 
     User.query({
@@ -85,7 +106,7 @@ app.post("/api/v1/login",(req,res) => {
                 const token = jwt.sign({
                     id: user.get("id"),
                     username: user.get("username"),
-                    isUser: true
+                    role: user.get("role")
                 }, secret.jwtSecretKey);
 
                 res.send({token});
@@ -182,6 +203,8 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
                     webpage: user.get("homepage_url"),
                     self_intro: user.get("self_intro"),
                     level: user.get("level"),
+                    wat: user.get("wat"),
+                    company: user.get("company"),
                     experience: user.get("experience"),
                     created_at: user.get("created_at"),
                     solutions: user.toJSON().solutions
