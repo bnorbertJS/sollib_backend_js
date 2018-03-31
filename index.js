@@ -216,6 +216,13 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
     })
 });
 
+app.get("/api/v1/get_users", authProtector, (req, res) => {
+    User.query({where: {role: "user"}})
+        .fetchAll({withRelated: ["solutions"]}).then(users => {
+            res.status(200).json({userList: users});
+    })
+});
+
 app.post("/api/v1/profile_upload", authProtector, (req, res) => {
     upload(req, res, (err) => {
         if(err){
