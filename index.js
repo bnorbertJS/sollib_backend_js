@@ -7,6 +7,9 @@ import jwt from 'jsonwebtoken';
 import secret from './secret';
 import User from './models/user';
 import Solution from './models/solution';
+import Skill from './models/skills';
+import Favourite from './models/favourites';
+import Message from './models/messages';
 import SolutionImage from './models/solution_imgs';
 import authProtector from './middlewares/auth';
 
@@ -189,10 +192,11 @@ app.post("/api/v1/delete_solution/:solution", authProtector, (req, res) => {
 app.get("/api/v1/profile/:user", authProtector, (req, res) => {
     User.query({
         where: {username: req.params.user}
-    }).fetch({withRelated: ["solutions"]}).then(user => {
+    }).fetch({withRelated: ["solutions", "skills"]}).then(user => {
         if (user){
             res.json({
                 user: {
+                    id: user.get("id"),
                     username: user.get("username"),
                     lastname: user.get("lastname"),
                     firstname: user.get("firstname"),
@@ -207,7 +211,9 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
                     company: user.get("company"),
                     experience: user.get("experience"),
                     created_at: user.get("created_at"),
-                    solutions: user.toJSON().solutions
+                    solutions: user.toJSON().solutions,
+                    skills: user.toJSON().skills,
+                    messages: user.toJSON().messages
                 }
             });
         }else{
@@ -216,9 +222,62 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
     })
 });
 
+app.post("/api/v1/lets_tinder", authProtector, (req, res) => {
+    Skill
+    .fetchAll()
+    .then(skills => {
+        let set = new Set();
+        skills.map(skill => {
+            if(req.body.searchSkills.indexOf(skill.get("name")) > -1 ){
+                set.add(skill.get("user_id"));
+            }
+        })
+        return set
+    })
+    .then(set => {
+        return Promise.all(Array.from(set).map(u_id => {
+            return User.query({where: {id: u_id}})
+                .fetch({withRelated: ["solutions", "skills"]}).then(user => {
+                    return user;
+                });
+            }))
+        })
+    .then( values => {
+        res.status(200).json({userList: values});
+    })
+});
+
+app.post("/api/v1/addto_fav", authProtector, (req, res) => {
+    //quick fix of timestamp issue. need refactoring
+    let newFavourite = req.body;
+    newFavourite.created_at = new Date();
+    newFavourite.updated_at = new Date();
+
+    new Favourite(req.body).save().then(model => {
+        res.status(201).json({success: model});
+    });
+});
+
+app.get("/api/v1/get_favs", authProtector, (req, res) => {
+    Favourite.query({where: {recruiter_id: req.currUser.id}})
+        .fetchAll().then(favs => {
+            return Promise.all(
+                favs.map( fav => {
+                    return User.query({where: {id: fav.get("who")}}).fetch()
+                        .then(user => {
+                            return user
+                        })
+                })
+            )
+        })
+        .then( u => {
+            res.status(200).json({favList: u});
+        })
+});
+
 app.get("/api/v1/get_users", authProtector, (req, res) => {
     User.query({where: {role: "user"}})
-        .fetchAll({withRelated: ["solutions"]}).then(users => {
+        .fetchAll({withRelated: ["solutions", "skills"]}).then(users => {
             res.status(200).json({userList: users});
     })
 });
@@ -257,6 +316,36 @@ app.post("/api/v1/profile_update", authProtector, (req, res) => {
         console.log(model);
        res.status(200).json({user: model});
     });
+});
+
+app.post("/api/v1/send_msg", authProtector, (req, res) => {
+    const from = req.currUser.id;
+    const { user_id, text, seen } = req.body;
+    const created_at = Date.now();
+    const updated_at = Date.now();
+    //req.currUser.id
+    console.log(from);
+    console.log(user_id)
+    console.log(text)
+    Message.forge({
+        from,
+        user_id,
+        text,
+        seen
+    }, { hasTimestamps: true }).save()
+        .then(msg => res.status(201).json({msg: msg}))
+        .catch(err => res.status(500).json({err: err}));
+});
+
+app.get("/api/v1/get_msg/:selectedUser", authProtector, (req, res) => {
+    Message.query((qdb) => {
+        qdb.where("user_id","=",req.params.selectedUser).andWhere("from","=",req.currUser.id);
+    })
+    .fetchAll()
+    .then(msgs => {
+        console.log(msgs)
+        res.status(200).json({messages: msgs})
+    })
 });
 
 app.listen(8000, () => console.log("Running on 8000"));
