@@ -5,6 +5,7 @@ import bodyParser from 'body-parser';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import secret from './secret';
+import _ from 'lodash';
 import User from './models/user';
 import Solution from './models/solution';
 import Skill from './models/skills';
@@ -324,9 +325,6 @@ app.post("/api/v1/send_msg", authProtector, (req, res) => {
     const created_at = Date.now();
     const updated_at = Date.now();
     //req.currUser.id
-    console.log(from);
-    console.log(user_id)
-    console.log(text)
     Message.forge({
         from,
         user_id,
@@ -339,13 +337,35 @@ app.post("/api/v1/send_msg", authProtector, (req, res) => {
 
 app.get("/api/v1/get_msg/:selectedUser", authProtector, (req, res) => {
     Message.query((qdb) => {
-        qdb.where("user_id","=",req.params.selectedUser).andWhere("from","=",req.currUser.id);
+    qdb.where("user_id","=",req.params.selectedUser).orWhere("user_id","=",req.currUser.id)
     })
     .fetchAll()
     .then(msgs => {
-        console.log(msgs)
+        console.log(msgs.toJSON())
         res.status(200).json({messages: msgs})
     })
+});
+
+app.get("/api/v1/get_user_contacts", authProtector, (req, res) => {
+    console.log(req.currUser.id)
+        Message.query((qdb) => {
+            qdb.where("user_id","=",req.currUser.id)
+        })
+        .fetchAll()
+        .then(msgs => {
+            let contactIdList = _.uniqBy(msgs.toJSON(), 'from')
+            Promise.all(contactIdList.map(item =>{
+                    return new User({"id": item.id})
+                            .fetch()
+                            .then(user => {
+                                return user;
+                            })
+                })
+            )
+            .then(users => {
+                res.json({contactList: users});
+            })
+        })
 });
 
 app.listen(8000, () => console.log("Running on 8000"));
