@@ -6,13 +6,14 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import secret from './secret';
 import _ from 'lodash';
+import knex from 'knex';
 import User from './models/user';
 import Solution from './models/solution';
 import Skill from './models/skills';
 import Favourite from './models/favourites';
 import Message from './models/messages';
 import SolutionImage from './models/solution_imgs';
-import authProtector from './middlewares/auth';
+import { authProtector, recruiterProtector, adminProtector } from './middlewares/auth';
 
 let app = express();
 
@@ -41,17 +42,14 @@ const uploadSolutionImages = multer({
 }).array("solutionImg", 10);
 
 function checkUploadFileType(file, cb){
-    //only jpeg jpg png allowed
     const filetypes = /jpeg|jpg|png/;
-
     const ext = filetypes.test(path.extname(file.originalname).toLowerCase())
+    const mimetype = filetypes.test(file.mimetype);
 
-    //const mimetype = filetypes.test(file.mimetype);
-
-    if(ext){
+    if(ext && mimetype){
         return cb(null, true);
     }else{
-        cb("Only images please!");
+        cb("Only jpeg, jpg and png pictures are allowed.");
     }
 }
 
@@ -59,11 +57,9 @@ app.get("/",(req, res) => {
     res.send("Init")
 });
 
-app.post("/api/v1/register",(req,res) => {
-    
+app.post("/api/v1/register",(req, res) => {
     const { username, email, lastname, firstname, pass } = req.body;
     const pass_crypt = bcrypt.hashSync(pass, 10);
-    console.log(req.body);
 
     User.forge({
         username,
@@ -75,14 +71,12 @@ app.post("/api/v1/register",(req,res) => {
     }, { hasTimestamps: true }).save()
         .then(user => res.status(201).json({success: true}))
         .catch(err => res.status(500).json({err: err}));
-
 });
 
 app.post("/api/v1/register_recruiter",(req, res) => {
     
     const { username, email, lastname, firstname, pass, wat, company } = req.body;
     const pass_crypt = bcrypt.hashSync(pass, 10);
-    console.log(req.body);
 
     User.forge({
         username,
@@ -139,7 +133,6 @@ app.post("/api/v1/new_solution", authProtector, (req, res) => {
 app.post("/api/v1/solution_upload/:solution", authProtector, (req, res) => {
     //put solution image in the solution_imgs table with id of current solution
     uploadSolutionImages(req, res, (err) => {
-        console.log(req.files)
         if(err){
             res.status(400).json({error: err});
         }else{
@@ -149,16 +142,14 @@ app.post("/api/v1/solution_upload/:solution", authProtector, (req, res) => {
                
             });
 
-            Promise.all(
-                req.files.map(img => {
+            Promise.all(req.files.map(img => {
                     return new SolutionImage({url: img.filename, solution_id: req.params.solution})
                         .save()
                         .then(function(model) {
                             return model
                     });
-                })
-            )
-            .then(data => res.status(200).json({success: data}));
+                }))
+                .then(data => res.status(200).json({success: data}));
 
         }
     })
@@ -218,12 +209,12 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
                 }
             });
         }else{
-            res.status(401).json({errors: {msg: "Cannot find username"}})
+            res.status(404).json({errors: {msg: "Cannot find username"}})
         }
     })
 });
 
-app.post("/api/v1/lets_tinder", authProtector, (req, res) => {
+app.post("/api/v1/lets_tinder", recruiterProtector, (req, res) => {
     Skill
     .fetchAll()
     .then(skills => {
@@ -248,7 +239,7 @@ app.post("/api/v1/lets_tinder", authProtector, (req, res) => {
     })
 });
 
-app.post("/api/v1/addto_fav", authProtector, (req, res) => {
+app.post("/api/v1/addto_fav", recruiterProtector, (req, res) => {
     //quick fix of timestamp issue. need refactoring
     let newFavourite = req.body;
     newFavourite.created_at = new Date();
@@ -259,7 +250,7 @@ app.post("/api/v1/addto_fav", authProtector, (req, res) => {
     });
 });
 
-app.get("/api/v1/get_favs", authProtector, (req, res) => {
+app.get("/api/v1/get_favs", recruiterProtector, (req, res) => {
     Favourite.query({where: {recruiter_id: req.currUser.id}})
         .fetchAll().then(favs => {
             return Promise.all(
@@ -276,7 +267,7 @@ app.get("/api/v1/get_favs", authProtector, (req, res) => {
         })
 });
 
-app.get("/api/v1/get_users", authProtector, (req, res) => {
+app.get("/api/v1/get_users", recruiterProtector, (req, res) => {
     User.query({where: {role: "user"}})
         .fetchAll({withRelated: ["solutions", "skills"]}).then(users => {
             res.status(200).json({userList: users});
@@ -300,7 +291,7 @@ app.post("/api/v1/profile_upload", authProtector, (req, res) => {
 app.post("/api/v1/profile_update", authProtector, (req, res) => {
     const { lastname, firstname, github, linkedin, webpage,
         self_intro, level, experience, skills } = req.body;
-    
+
     new User({id: req.currUser.id})
     .save({
         //user data
@@ -314,9 +305,32 @@ app.post("/api/v1/profile_update", authProtector, (req, res) => {
         experience
     }, {patch: true})
     .then(function(model) {
-        console.log(model);
-       res.status(200).json({user: model});
-    });
+        Skill.query({where: {user_id: req.currUser.id}})
+            .destroy()
+            .then(deletemodel => {
+                if(deletemodel){
+                    return Promise.all(
+                        skills.map(skill => {
+                            return new Skill({
+                                name: skill.name,
+                                user_id: req.currUser.id
+                            },{ hasTimestamps: true })
+                            .save()
+                            .then(userSkills => {
+                                return model;
+                            })
+                        })
+                    )
+                    .then((skills) => {
+                        User
+                        .query({where: {id: req.currUser.id}})
+                        .fetch({withRelated: ["solutions", "skills"]}).then(user => {
+                            res.json({user: user});
+                        })
+                    })
+                }
+            })
+    })
 });
 
 app.post("/api/v1/send_msg", authProtector, (req, res) => {
@@ -366,6 +380,30 @@ app.get("/api/v1/get_user_contacts", authProtector, (req, res) => {
                 res.json({contactList: users});
             })
         })
+});
+
+app.get("/api/v1/get_user_by_names/:user", adminProtector, (req, res) => {
+    User.query({
+        where: {username: req.params.user}
+    })
+    .fetch({withRelated: ["solutions", "skills"]})
+    .then(user => {
+        if (user){
+            res.json({user: user});
+        }else{
+            res.status(404).json({errors: {msg: "Cannot find user"}})
+        }
+    })
+});
+
+app.delete("/api/v1/delete_user", (req, res) => {
+    User.query({
+        where: {id: req.body.id}
+    }).destroy().then(model => {
+        console.log(model);
+        res.status(200).json({success: "Solution Deleted"})
+    })
+    console.log(req.body.id);
 });
 
 app.listen(8000, () => console.log("Running on 8000"));
