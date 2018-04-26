@@ -120,7 +120,7 @@ app.post("/api/v1/login",(req, res) => {
 app.post("/api/v1/new_solution", authProtector, (req, res) => {
     const newSolution = req.body;
     newSolution.user_id = req.currUser.id;
-
+    newSolution.reported = 1;
     //quick fix of timestamp issue. need refactoring
     newSolution.created_at = new Date();
     newSolution.updated_at = new Date();
@@ -396,12 +396,59 @@ app.get("/api/v1/get_user_by_names/:user", adminProtector, (req, res) => {
     })
 });
 
-app.delete("/api/v1/delete_user", (req, res) => {
+app.get("/api/v1/get_reported_solutions", adminProtector, (req, res) => {
+    Solution.query((qdb) => {
+        qdb.where("reported", ">", 0)
+    })
+    .fetchAll()
+    .then(sols => {
+        res.json({solutions: sols});
+    })
+});
+
+app.delete("/api/v1/delete_reported_solution", (req, res) => {
+    Solution.query({
+        where: {id: req.body.id}
+    })
+    .destroy()
+    .then(model => {
+        return Solution.query((qdb) => {
+            qdb.where("reported", ">", 0)
+        })
+        .fetchAll()
+        .then(sols => {
+            return sols;
+        })
+    })
+    .then(sols => {
+        res.json({solutions: sols});
+    })
+});
+
+app.post("/api/v1/accept_solution/:id", adminProtector, (req, res) => {
+    new Solution({id: req.params.id})
+    .save({
+       reported: 0
+    }, {patch: true})
+    .then(model => {
+        return Solution.query((qdb) => {
+            qdb.where("reported", ">", 0)
+        })
+        .fetchAll()
+        .then(sols => {
+            return sols;
+        })
+    })
+    .then(sols => {
+        res.json({solutions: sols});
+    })
+});
+
+app.delete("/api/v1/delete_user", adminProtector, (req, res) => {
     User.query({
         where: {id: req.body.id}
     }).destroy().then(model => {
-        console.log(model);
-        res.status(200).json({success: "Solution Deleted"})
+        res.status(200).json({success: "User Deleted"})
     })
     console.log(req.body.id);
 });
