@@ -89,7 +89,7 @@ app.post("/api/v1/register_recruiter",(req, res) => {
         pass: pass_crypt
     }, { hasTimestamps: true }).save()
         .then(user => res.status(201).json({success: true}))
-        .catch(err => res.status(500).json({err: err}));
+        .catch(err => {console.log(err); res.status(500).json({err: err})});
 });
 
 app.post("/api/v1/login",(req, res) => {
@@ -120,7 +120,7 @@ app.post("/api/v1/login",(req, res) => {
 app.post("/api/v1/new_solution", authProtector, (req, res) => {
     const newSolution = req.body;
     newSolution.user_id = req.currUser.id;
-    newSolution.reported = 1;
+    newSolution.reported = 0;
     //quick fix of timestamp issue. need refactoring
     newSolution.created_at = new Date();
     newSolution.updated_at = new Date();
@@ -361,7 +361,6 @@ app.get("/api/v1/get_msg/:selectedUser", authProtector, (req, res) => {
 });
 
 app.get("/api/v1/get_user_contacts", authProtector, (req, res) => {
-    console.log(req.currUser.id)
         Message.query((qdb) => {
             qdb.where("user_id","=",req.currUser.id)
         })
@@ -369,7 +368,9 @@ app.get("/api/v1/get_user_contacts", authProtector, (req, res) => {
         .then(msgs => {
             let contactIdList = _.uniqBy(msgs.toJSON(), 'from')
             Promise.all(contactIdList.map(item =>{
-                    return new User({"id": item.id})
+                
+                console.log(item.id)
+                    return new User({"id": item.from})
                             .fetch()
                             .then(user => {
                                 return user;
@@ -452,5 +453,15 @@ app.delete("/api/v1/delete_user", adminProtector, (req, res) => {
     })
     console.log(req.body.id);
 });
+
+app.post("/api/v1/report_solution/:id", authProtector, (req, res) => {
+    new Solution({id: req.params.id})
+    .save({
+       reported: 1
+    }, {patch: true})
+    .then(model => {
+       res.json(model);
+    })
+})
 
 app.listen(8000, () => console.log("Running on 8000"));
