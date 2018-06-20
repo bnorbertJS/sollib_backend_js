@@ -74,9 +74,13 @@ app.post("/api/v1/register",(req, res) => {
 });
 
 app.post("/api/v1/register_recruiter",(req, res) => {
-    
+    let isapproved = true;
     const { username, email, lastname, firstname, pass, wat, company } = req.body;
     const pass_crypt = bcrypt.hashSync(pass, 10);
+    
+    if(wat === ""){
+        isapproved = false;
+    }
 
     User.forge({
         username,
@@ -85,6 +89,7 @@ app.post("/api/v1/register_recruiter",(req, res) => {
         firstname,
         wat,
         company,
+        isapproved,
         role: "recruiter",
         pass: pass_crypt
     }, { hasTimestamps: true }).save()
@@ -125,9 +130,13 @@ app.post("/api/v1/new_solution", authProtector, (req, res) => {
     newSolution.created_at = new Date();
     newSolution.updated_at = new Date();
 
-    new Solution(newSolution).save().then(model => {
-        res.status(201).json({success: model});
-    });
+    if(req.body.github === "" || req.body.name === ""){
+        res.status(400).json({error: "name and github are mandatory."});
+    }else{
+        new Solution(newSolution).save().then(model => {
+            res.status(201).json({success: model});
+        });
+    }
 });
 
 app.post("/api/v1/solution_upload/:solution", authProtector, (req, res) => {
@@ -203,6 +212,7 @@ app.get("/api/v1/profile/:user", authProtector, (req, res) => {
                     company: user.get("company"),
                     experience: user.get("experience"),
                     created_at: user.get("created_at"),
+                    isapproved: user.get("isapproved"),
                     solutions: user.toJSON().solutions,
                     skills: user.toJSON().skills,
                     messages: user.toJSON().messages
@@ -407,6 +417,16 @@ app.get("/api/v1/get_reported_solutions", adminProtector, (req, res) => {
     })
 });
 
+app.get("/api/v1/get_reg_problems", adminProtector, (req,res) =>{
+    User.query((qdb) => {
+        qdb.where("isapproved", "=",false)
+    })
+    .fetchAll()
+    .then(recs => {
+        res.json({recruiters: recs});
+    })
+});
+
 app.delete("/api/v1/delete_reported_solution", (req, res) => {
     Solution.query({
         where: {id: req.body.id}
@@ -445,13 +465,50 @@ app.post("/api/v1/accept_solution/:id", adminProtector, (req, res) => {
     })
 });
 
-app.delete("/api/v1/delete_user", adminProtector, (req, res) => {
+app.post("/api/v1/delete_reg_recruiter", adminProtector, (req, res) => {
     User.query({
         where: {id: req.body.id}
-    }).destroy().then(model => {
-        res.status(200).json({success: "User Deleted"})
     })
-    console.log(req.body.id);
+    .destroy()
+    .then(model => {
+        return User.query((qdb) => {
+            qdb.where("isapproved", "=", false)
+        })
+        .fetchAll()
+        .then(recs => {
+            return recs;
+        })
+    })
+    .then(recs => {
+        res.json({recruiters: recs});
+    })
+});
+
+app.post("/api/v1/accept_reg_recruiter/:id", adminProtector, (req, res) => {
+    new User({id: req.params.id})
+    .save({
+       isapproved: true
+    }, {patch: true})
+    .then(model => {
+        return User.query((qdb) => {
+            qdb.where("isapproved", "=", false)
+        })
+        .fetchAll()
+        .then(recs => {
+            return recs;
+        })
+    })
+    .then(recs => {
+        res.json({recruiters: recs});
+    })
+});
+
+app.delete("/api/v1/delete_user", (req, res) => {
+        User.query({
+            where: {id: req.body.id}
+        }).destroy().then(model => {
+            res.status(200).json({success: "User Deleted"})
+        })
 });
 
 app.post("/api/v1/report_solution/:id", authProtector, (req, res) => {
