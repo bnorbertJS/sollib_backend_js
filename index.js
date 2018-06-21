@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import secret from './secret';
 import _ from 'lodash';
+import vat from 'validate-vat';
 import knex from 'knex';
 import User from './models/user';
 import Solution from './models/solution';
@@ -78,23 +79,22 @@ app.post("/api/v1/register_recruiter",(req, res) => {
     const { username, email, lastname, firstname, pass, wat, company } = req.body;
     const pass_crypt = bcrypt.hashSync(pass, 10);
     
-    if(wat === ""){
-        isapproved = false;
-    }
-
-    User.forge({
-        username,
-        email,
-        lastname,
-        firstname,
-        wat,
-        company,
-        isapproved,
-        role: "recruiter",
-        pass: pass_crypt
-    }, { hasTimestamps: true }).save()
-        .then(user => res.status(201).json({success: true}))
-        .catch(err => {console.log(err); res.status(500).json({err: err})});
+    vat( 'HU', wat,  function(err, validationInfo) {
+        console.log(validationInfo)
+        User.forge({
+            username,
+            email,
+            lastname,
+            firstname,
+            wat,
+            company,
+            isapproved: validationInfo.valid,
+            role: "recruiter",
+            pass: pass_crypt
+        }, { hasTimestamps: true }).save()
+            .then(user => res.status(201).json({success: true}))
+            .catch(err => {console.log(err); res.status(500).json({err: err})});
+    });
 });
 
 app.post("/api/v1/login",(req, res) => {
